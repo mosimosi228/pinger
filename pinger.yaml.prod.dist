@@ -1,0 +1,22 @@
+app:
+  name: Pinger
+  env: prod
+  addr: http://localhost:2030
+  port: "2030"
+  workers: 4
+
+logs:
+  level: warn
+  out_dir: /var/log/pinger
+  out_filename: pinger.log
+
+security:
+  jwt_secret: change-me-generate-a-long-random-secret
+  api_key: ""
+
+sqlite:
+  path: /var/lib/pinger/pinger.db
+
+telegram:
+  token: ""
+  chat_id: ""

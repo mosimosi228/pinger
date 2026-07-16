@@ -1,0 +1,27 @@
+[Unit]
+Description=Pinger uptime monitoring server
+Documentation=https://github.com/mosimosi228/pinger
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pinger
+Group=pinger
+ExecStart=__BIN__ serve --config /etc/pinger/pinger.yaml
+WorkingDirectory=/var/lib/pinger
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+LimitNOFILE=65535
+# ICMP checks may need raw sockets
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/etc/pinger /var/lib/pinger /var/log/pinger
+
+[Install]
+WantedBy=multi-user.target

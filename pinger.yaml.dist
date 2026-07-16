@@ -1,0 +1,22 @@
+app:
+  name: Pinger
+  env: dev
+  addr: http://localhost:12312
+  port: "12312"
+  workers: 4
+
+logs:
+  level: debug
+  out_dir: runtime/logs
+  out_filename: pinger.log
+
+security:
+  jwt_secret: local-dev-jwt-secret-change-me
+  api_key: ""
+
+sqlite:
+  path: runtime/database/pinger.db
+
+telegram:
+  token: ""
+  chat_id: ""

@@ -11,6 +11,7 @@
 # Test binary, built with `go test -c`
 *.test
 
+tmp/*
 # Code coverage profiles and other test artifacts
 *.out
 coverage.*
@@ -28,5 +29,16 @@ go.work.sum
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+/.vscode/*
+
+/runtime/*
+
+/.idea/*
+
+/web/node_modules/
+
+/bin/*
+/pinger.yaml
+/public/assets/
+/public/index.html
+/public/widget.js
