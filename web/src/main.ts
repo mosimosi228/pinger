@@ -167,8 +167,9 @@ function originBase(): string {
 
 function embedSnippets(slug: string): string {
   const base = originBase();
-  const iframe = `<iframe src="${base}/embed/s/${slug}?lang=en" width="100%" height="360" style="border:0;background:transparent" loading="lazy" title="Pinger status" allowtransparency="true"></iframe>`;
-  const script = `<script src="${base}/widget.js" data-slug="${slug}" data-lang="en" async><\/script>`;
+  const iframe = `<div style="height:420px">\n  <iframe src="${base}/embed/s/${slug}?theme=light&lang=en&fill=1" style="width:100%;height:100%;border:0;background:transparent" loading="lazy" title="Pinger status" allowtransparency="true"></iframe>\n</div>`;
+  const script = `<script src="${base}/widget.js" data-slug="${slug}" data-theme="light" data-height="auto" data-lang="en" async><\/script>`;
+  const scriptFill = `<div style="height:100%">\n  <script src="${base}/widget.js" data-slug="${slug}" data-theme="light" data-height="100%" data-lang="en" async><\/script>\n</div>`;
   return `
     <section class="panel" style="margin-top:1rem">
       <h2>${esc(t("embed"))}</h2>
@@ -179,8 +180,12 @@ function embedSnippets(slug: string): string {
           <pre>${esc(iframe)}</pre>
         </div>
         <div>
-          <p class="muted" style="margin:0 0 0.35rem">${esc(t("embed_script"))}</p>
+          <p class="muted" style="margin:0 0 0.35rem">${esc(t("embed_script"))} (auto)</p>
           <pre>${esc(script)}</pre>
+        </div>
+        <div>
+          <p class="muted" style="margin:0 0 0.35rem">${esc(t("embed_script"))} (100%)</p>
+          <pre>${esc(scriptFill)}</pre>
         </div>
       </div>
     </section>
@@ -776,8 +781,9 @@ function embedStatusView(name: string, slug: string, list: Monitor[], theme: str
     )
     .join("");
 
+  const themeClass = theme === "light" ? "theme-light" : "theme-dark";
   return `
-    <div class="embed-shell theme-${theme === "light" ? "light" : "dark"}">
+    <div class="embed-shell ${themeClass}">
       <div class="embed-card">
         <div class="embed-head">
           <h1>${esc(name)}</h1>
@@ -785,13 +791,40 @@ function embedStatusView(name: string, slug: string, list: Monitor[], theme: str
         </div>
         ${
           list.length
-            ? `<div class="table-wrap"><table class="table" style="min-width:280px"><thead><tr><th>${esc(t("col_service"))}</th><th>${esc(t("col_status"))}</th><th>${esc(t("col_uptime"))}</th><th>${esc(t("col_latency"))}</th></tr></thead><tbody>${rows}</tbody></table></div>`
+            ? `<div class="table-wrap"><table class="table"><thead><tr><th>${esc(t("col_service"))}</th><th>${esc(t("col_status"))}</th><th>${esc(t("col_uptime"))}</th><th>${esc(t("col_latency"))}</th></tr></thead><tbody>${rows}</tbody></table></div>`
             : `<p class="list-empty">${esc(t("no_monitors_short"))}</p>`
         }
         <p class="embed-foot"><a href="${esc(originBase())}/s/${esc(slug)}" target="_blank" rel="noopener">${esc(t("powered_by"))}</a></p>
       </div>
     </div>
   `;
+}
+
+function startEmbedHostBridge(fill: boolean): void {
+  const shell = document.querySelector<HTMLElement>(".embed-shell");
+  if (!shell) return;
+
+  if (fill) {
+    shell.classList.add("fill-height");
+    return;
+  }
+
+  if (window.parent === window) return;
+
+  const post = () => {
+    const height = Math.ceil(shell.getBoundingClientRect().height);
+    if (height > 0) {
+      window.parent.postMessage({ type: "pinger-embed-resize", height }, "*");
+    }
+  };
+
+  post();
+  requestAnimationFrame(post);
+  window.addEventListener("load", post);
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(() => post());
+    ro.observe(shell);
+  }
 }
 
 /* ---------- router ---------- */
@@ -806,30 +839,39 @@ async function render(): Promise<void> {
   const embedMatch = route.match(/^\/embed\/s\/([^/]+)$/);
   if (embedMatch) {
     const embedLang = (params.get("lang") as Lang) || "en";
+    const theme = params.get("theme") || "dark";
+    const fill = params.get("fill") === "1" || params.get("height") === "100%";
+    document.documentElement.classList.add("embed-mode");
+    document.body.classList.add("embed-mode");
+    if (theme === "light") {
+      document.documentElement.classList.add("theme-light");
+      document.body.classList.add("theme-light");
+    }
+    if (fill) {
+      document.documentElement.classList.add("fill-height");
+      document.body.classList.add("fill-height");
+    }
     try {
       const page = await statusPages.public(embedMatch[1]);
-      const theme = params.get("theme") || "dark";
-      document.documentElement.classList.add("embed-mode");
-      document.body.classList.add("embed-mode");
       document.documentElement.lang = embedLang === "zh" ? "zh-CN" : embedLang;
       app.innerHTML = withLang(embedLang, () =>
         embedStatusView(page.name, page.slug, page.monitors || [], theme),
       );
+      startEmbedHostBridge(fill);
       disposeLive = connectSlugLive(page.slug, (ev) => {
         withLang(embedLang, () => applyStatusEvent(app, ev));
       });
     } catch (err) {
-      document.documentElement.classList.add("embed-mode");
-      document.body.classList.add("embed-mode");
       app.innerHTML = withLang(embedLang, () =>
-        `<div class="embed-shell"><div class="embed-card"><p class="error">${esc(err instanceof Error ? err.message : t("not_found"))}</p></div></div>`,
+        `<div class="embed-shell ${theme === "light" ? "theme-light" : ""}"><div class="embed-card"><p class="error">${esc(err instanceof Error ? err.message : t("not_found"))}</p></div></div>`,
       );
+      startEmbedHostBridge(fill);
     }
     return;
   }
 
-  document.documentElement.classList.remove("embed-mode");
-  document.body.classList.remove("embed-mode");
+  document.documentElement.classList.remove("embed-mode", "theme-light", "fill-height");
+  document.body.classList.remove("embed-mode", "theme-light", "fill-height");
 
   const publicMatch = route.match(/^\/s\/([^/]+)$/);
   if (publicMatch) {

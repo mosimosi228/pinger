@@ -109,20 +109,31 @@ Attach Telegram or webhook channels to a monitor. On **up ↔ down** you get a f
 Public page: `/s/{slug}`
 
 ```html
-<iframe
-  src="https://your-host/embed/s/SLUG?lang=en"
-  width="100%"
-  height="360"
-  style="border:0;background:transparent"
-  allowtransparency="true"
-></iframe>
+<div style="height:420px">
+  <iframe
+    src="https://your-host/embed/s/SLUG?theme=light&lang=en&fill=1"
+    style="width:100%;height:100%;border:0;background:transparent"
+    allowtransparency="true"
+  ></iframe>
+</div>
 ```
 
 ```html
-<script src="https://your-host/widget.js" data-slug="SLUG" data-lang="en" async></script>
+<script
+  src="https://your-host/widget.js"
+  data-slug="SLUG"
+  data-theme="light"
+  data-height="auto"
+  data-lang="en"
+  async
+></script>
 ```
 
-Optional: `data-theme="light|dark"`, `data-height="360"`, `data-refresh="60"`.
+Optional attrs: `data-theme="light|dark"`, `data-height="auto|100%|480"`, `data-refresh="60"`, `data-lang="en"`.
+
+- `data-height="auto"` (default) — iframe grows to content height  
+- `data-height="100%"` — fill parent (parent must have a height)  
+- `data-height="480"` — fixed pixels  
 
 ### Live updates
 
