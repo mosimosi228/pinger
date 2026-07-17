@@ -62,10 +62,40 @@ export type StatusPage = {
   monitors?: Monitor[];
 };
 
+export type PublicHourBucket = {
+  hour: string;
+  uptime_pct?: number | null;
+  total: number;
+};
+
+export type PublicMonitor = {
+  id: number;
+  name: string;
+  type: string;
+  enabled: boolean;
+  last_status?: boolean | null;
+  last_latency?: number | null;
+  last_checked_at?: string;
+  uptime_1h?: number | null;
+  uptime_hours?: PublicHourBucket[];
+};
+
+export type PublicIncident = {
+  id: number;
+  monitor_id: number;
+  monitor_name: string;
+  title: string;
+  message: string;
+  started_at: string;
+  resolved_at?: string;
+};
+
 export type PublicStatusPage = {
   name: string;
   slug: string;
-  monitors: Monitor[];
+  overall_status: string;
+  monitors: PublicMonitor[];
+  incidents: PublicIncident[];
 };
 
 export function getAccessToken(): string | null {

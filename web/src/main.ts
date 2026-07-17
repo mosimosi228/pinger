@@ -14,6 +14,10 @@ import {
   type Me,
   type Monitor,
   type Notification,
+  type PublicHourBucket,
+  type PublicIncident,
+  type PublicMonitor,
+  type PublicStatusPage,
   type StatusPage,
 } from "./api";
 import { applyStatusEvent, connectSlugLive, connectUserLive } from "./live";
@@ -48,7 +52,22 @@ function esc(value: string | number | null | undefined): string {
     .replaceAll('"', "&quot;");
 }
 
-function statusBadge(m: Monitor): string {
+function td(label: string, content: string, cls = ""): string {
+  const classAttr = cls ? ` class="${cls}"` : "";
+  return `<td${classAttr} data-label="${esc(label)}">${content}</td>`;
+}
+
+function actionsTd(...buttons: string[]): string {
+  return td("", `<div class="row-actions-inner">${buttons.join("")}</div>`, "row-actions");
+}
+
+type StatusLike = {
+  enabled: boolean;
+  last_status?: boolean | null;
+  uptime_1h?: number | null;
+};
+
+function statusBadge(m: StatusLike): string {
   if (!m.enabled) return `<span class="badge badge-off">${esc(t("badge_off"))}</span>`;
   if (m.last_status === true) return `<span class="badge badge-up">${esc(t("badge_up"))}</span>`;
   if (m.last_status === false) return `<span class="badge badge-down">${esc(t("badge_down"))}</span>`;
@@ -56,11 +75,145 @@ function statusBadge(m: Monitor): string {
 }
 
 /** Show 1h uptime % only when the monitor is currently UP. */
-function uptimeCell(m: Monitor): string {
+function uptimeCell(m: StatusLike): string {
   if (m.enabled && m.last_status === true && m.uptime_1h != null) {
     return `<span class="js-uptime">${esc(formatUptime(m.uptime_1h))}%</span>`;
   }
   return `<span class="js-uptime">—</span>`;
+}
+
+function overallLabel(status: string): string {
+  switch (status) {
+    case "major_outage":
+      return t("status_major");
+    case "degraded":
+      return t("status_degraded");
+    default:
+      return t("all_operational");
+  }
+}
+
+function overallBannerClass(status: string): string {
+  switch (status) {
+    case "major_outage":
+      return "major";
+    case "degraded":
+      return "degraded";
+    default:
+      return "ok";
+  }
+}
+
+function hourBarHTML(hours?: PublicHourBucket[]): string {
+  const slots =
+    hours && hours.length === 24
+      ? hours
+      : Array.from({ length: 24 }, () => ({ hour: "", total: 0 } as PublicHourBucket));
+  const segs = slots
+    .map((b, i) => {
+      const ago = 23 - i;
+      let cls = "na";
+      let tip = t("bar_na");
+      if (b.total > 0 && b.uptime_pct != null) {
+        const pct = b.uptime_pct;
+        if (pct >= 99.5) cls = "ok";
+        else if (pct >= 80) cls = "partial";
+        else cls = "bad";
+        tip = `${formatUptime(pct)}%`;
+      }
+      const label = `${tip} · ${t("bar_hours_ago").replace("{n}", String(ago))}`;
+      return `<span class="hour-seg ${cls}" title="${esc(label)}"></span>`;
+    })
+    .join("");
+  return `<div class="hour-bar" role="img" aria-label="${esc(t("uptime_24h"))}">${segs}</div>`;
+}
+
+function sortIncidents(incs: PublicIncident[]): PublicIncident[] {
+  return [...incs].sort((a, b) => {
+    const aOpen = !a.resolved_at;
+    const bOpen = !b.resolved_at;
+    if (aOpen !== bOpen) return aOpen ? -1 : 1;
+    return b.started_at.localeCompare(a.started_at);
+  });
+}
+
+function incidentItemHTML(inc: PublicIncident): string {
+  const open = !inc.resolved_at;
+  const body = (inc.message || inc.title || "").trim() || "—";
+  const range = open
+    ? `${esc(inc.started_at)} · ${esc(t("incident_ongoing"))}`
+    : `${esc(inc.started_at)} → ${esc(inc.resolved_at)}`;
+  return `
+    <li class="incident-item${open ? " open" : ""}">
+      <div class="incident-head">
+        <span class="incident-name">${esc(inc.monitor_name)}</span>
+        <span class="incident-state">${esc(open ? t("incident_ongoing") : t("incident_resolved"))}</span>
+      </div>
+      <p class="incident-msg">${esc(body)}</p>
+      <p class="incident-time">${range}</p>
+    </li>`;
+}
+
+function publicComponentsHTML(list: PublicMonitor[]): string {
+  return list
+    .map(
+      (m) => `
+      <li class="status-component" data-monitor-id="${m.id}">
+        <div class="status-component-top">
+          <div class="status-component-title">
+            <span class="status-component-name">${esc(m.name)}</span>
+            <span class="js-status">${statusBadge(m)}</span>
+          </div>
+          <div class="status-component-meta">
+            <span><span class="meta-k">${esc(t("col_latency"))}</span> <span class="js-latency">${
+              m.last_latency != null ? esc(m.last_latency) + " ms" : "—"
+            }</span></span>
+            <span><span class="meta-k">${esc(t("col_uptime"))}</span> ${uptimeCell(m)}</span>
+          </div>
+        </div>
+        ${hourBarHTML(m.uptime_hours)}
+      </li>`,
+    )
+    .join("");
+}
+
+function incidentsHTML(incs: PublicIncident[], limit?: number): string {
+  const list = sortIncidents(incs);
+  const sliced = limit != null ? list.slice(0, limit) : list;
+  if (!sliced.length) return `<p class="list-empty">${esc(t("no_incidents"))}</p>`;
+  return `<ul class="incident-list">${sliced.map(incidentItemHTML).join("")}</ul>`;
+}
+
+async function refreshPublicHistory(root: ParentNode, slug: string, lang?: Lang): Promise<void> {
+  try {
+    const page = await statusPages.public(slug);
+    const apply = () => {
+      const banner = root.querySelector(".js-status-banner");
+      const bannerText = root.querySelector(".js-status-banner-text");
+      if (banner) {
+        banner.classList.remove("ok", "degraded", "major");
+        banner.classList.add(overallBannerClass(page.overall_status));
+      }
+      if (bannerText) bannerText.textContent = overallLabel(page.overall_status);
+
+      (page.monitors || []).forEach((m) => {
+        const row = root.querySelector(`[data-monitor-id="${m.id}"]`);
+        const bar = row?.querySelector(".hour-bar");
+        if (bar) bar.outerHTML = hourBarHTML(m.uptime_hours);
+      });
+
+      const incidentsRoot = root.querySelector(".js-incidents");
+      if (incidentsRoot) {
+        const limitAttr = incidentsRoot.getAttribute("data-limit");
+        const limit = limitAttr ? Number(limitAttr) : undefined;
+        incidentsRoot.innerHTML = incidentsHTML(page.incidents || [], Number.isFinite(limit) ? limit : undefined);
+      }
+    };
+    if (lang) withLang(lang, apply);
+    else apply();
+  } catch {
+    /* ignore refresh errors */
+  }
 }
 
 function formatUptime(v: number): string {
@@ -84,26 +237,55 @@ function bindLang(root: HTMLElement): void {
 }
 
 function nav(active: string): string {
-  const link = (href: string, label: string) =>
-    `<a href="${href}" data-link class="nav-link${active === href ? " active" : ""}">${label}</a>`;
+  const items: [string, string][] = [
+    ["/", t("nav_dashboard")],
+    ["/monitors", t("nav_monitors")],
+    ["/notifications", t("nav_alerts")],
+    ["/status-pages", t("nav_pages")],
+    ["/profile", t("nav_profile")],
+  ];
+  const current = items.find(([href]) => href === active)?.[1] || t("nav_dashboard");
+  const links = items
+    .map(
+      ([href, label]) =>
+        `<a href="${href}" data-link class="nav-link${active === href ? " active" : ""}">${esc(label)}</a>`,
+    )
+    .join("");
   return `
     <nav class="nav" aria-label="${esc(t("nav_aria"))}">
-      <div class="nav-tabs">
-        ${link("/", t("nav_dashboard"))}
-        ${link("/monitors", t("nav_monitors"))}
-        ${link("/notifications", t("nav_alerts"))}
-        ${link("/status-pages", t("nav_pages"))}
-        ${link("/profile", t("nav_profile"))}
+      <div class="nav-bar">
+        <span class="nav-current">${esc(current)}</span>
+        <button class="nav-burger" type="button" id="nav-burger" aria-expanded="false" aria-controls="nav-panel" aria-label="${esc(t("menu"))}">
+          <span class="nav-burger-lines" aria-hidden="true"></span>
+        </button>
       </div>
-      <button class="btn btn-ghost btn-nav" type="button" id="logout">${esc(t("logout"))}</button>
+      <div class="nav-panel" id="nav-panel">
+        <div class="nav-tabs">
+          ${links}
+        </div>
+        <button class="btn btn-ghost btn-nav" type="button" id="logout">${esc(t("logout"))}</button>
+      </div>
     </nav>
   `;
 }
 
 function bindNav(root: HTMLElement): void {
+  const navEl = root.querySelector<HTMLElement>(".nav");
+  const burger = root.querySelector<HTMLButtonElement>("#nav-burger");
+  const setOpen = (open: boolean) => {
+    navEl?.classList.toggle("is-open", open);
+    burger?.setAttribute("aria-expanded", open ? "true" : "false");
+    burger?.setAttribute("aria-label", open ? t("menu_close") : t("menu"));
+  };
+
+  burger?.addEventListener("click", () => {
+    setOpen(!navEl?.classList.contains("is-open"));
+  });
+
   root.querySelectorAll<HTMLAnchorElement>("a[data-link]").forEach((a) => {
     a.addEventListener("click", (e) => {
       e.preventDefault();
+      setOpen(false);
       go(a.getAttribute("href") || "/");
     });
   });
@@ -167,25 +349,20 @@ function originBase(): string {
 
 function embedSnippets(slug: string): string {
   const base = originBase();
-  const iframe = `<div style="height:420px">\n  <iframe src="${base}/embed/s/${slug}?theme=light&lang=en&fill=1" style="width:100%;height:100%;border:0;background:transparent" loading="lazy" title="Pinger status" allowtransparency="true"></iframe>\n</div>`;
-  const script = `<script src="${base}/widget.js" data-slug="${slug}" data-theme="light" data-height="auto" data-lang="en" async><\/script>`;
-  const scriptFill = `<div style="height:100%">\n  <script src="${base}/widget.js" data-slug="${slug}" data-theme="light" data-height="100%" data-lang="en" async><\/script>\n</div>`;
+  const script = `<script src="${base}/widget.js" data-slug="${slug}" data-theme="light" data-variant="normal" data-height="auto" data-lang="en" async><\/script>`;
+  const scriptMini = `<script src="${base}/widget.js" data-slug="${slug}" data-theme="light" data-variant="mini" data-height="auto" data-lang="en" async><\/script>`;
   return `
     <section class="panel" style="margin-top:1rem">
       <h2>${esc(t("embed"))}</h2>
       <p class="muted">${esc(t("embed_hint"))}</p>
       <div class="embed-box">
         <div>
-          <p class="muted" style="margin:0 0 0.35rem">${esc(t("embed_iframe"))}</p>
-          <pre>${esc(iframe)}</pre>
-        </div>
-        <div>
-          <p class="muted" style="margin:0 0 0.35rem">${esc(t("embed_script"))} (auto)</p>
+          <p class="muted" style="margin:0 0 0.35rem">${esc(t("embed_normal"))}</p>
           <pre>${esc(script)}</pre>
         </div>
         <div>
-          <p class="muted" style="margin:0 0 0.35rem">${esc(t("embed_script"))} (100%)</p>
-          <pre>${esc(scriptFill)}</pre>
+          <p class="muted" style="margin:0 0 0.35rem">${esc(t("embed_mini"))}</p>
+          <pre>${esc(scriptMini)}</pre>
         </div>
       </div>
     </section>
@@ -252,13 +429,13 @@ function dashboardView(user: Me, list: Monitor[]): string {
     .map(
       (m) => `
       <tr data-monitor-id="${m.id}">
-        <td><a href="/monitors/${m.id}" data-link>${esc(m.name)}</a></td>
-        <td class="cell-tight">${esc(m.type)}</td>
-        <td>${esc(m.target)}</td>
-        <td class="cell-tight js-status">${statusBadge(m)}</td>
-        <td class="cell-tight">${uptimeCell(m)}</td>
-        <td class="cell-tight js-latency">${m.last_latency != null ? esc(m.last_latency) + " ms" : "—"}</td>
-        <td class="cell-tight js-checked">${esc(m.last_checked_at || "—")}</td>
+        ${td(t("col_name"), `<a href="/monitors/${m.id}" data-link>${esc(m.name)}</a>`)}
+        ${td(t("col_type"), esc(m.type), "cell-tight")}
+        ${td(t("col_target"), esc(m.target))}
+        ${td(t("col_status"), statusBadge(m), "cell-tight js-status")}
+        ${td(t("col_uptime"), uptimeCell(m), "cell-tight")}
+        ${td(t("col_latency"), m.last_latency != null ? esc(m.last_latency) + " ms" : "—", "cell-tight js-latency")}
+        ${td(t("col_checked"), esc(m.last_checked_at || "—"), "cell-tight js-checked")}
       </tr>`,
     )
     .join("");
@@ -291,13 +468,18 @@ function monitorsView(list: Monitor[]): string {
     .map(
       (m) => `
       <tr data-monitor-id="${m.id}">
-        <td><a href="/monitors/${m.id}" data-link>${esc(m.name)}</a></td>
-        <td class="cell-tight">${esc(m.type)}</td>
-        <td>${esc(m.target)}</td>
-        <td class="cell-tight">${esc(m.interval)}s</td>
-        <td class="cell-tight js-status">${statusBadge(m)}</td>
-        <td class="cell-tight">${uptimeCell(m)}</td>
-        <td><button class="btn btn-ghost" data-del="${m.id}" type="button">${esc(t("delete"))}</button></td>
+        ${td(t("col_name"), `<a href="/monitors/${m.id}" data-link>${esc(m.name)}</a>`)}
+        ${td(t("col_type"), esc(m.type), "cell-tight")}
+        ${td(t("col_target"), esc(m.target))}
+        ${td(t("col_interval"), `${esc(m.interval)}s`, "cell-tight")}
+        ${td(t("col_status"), statusBadge(m), "cell-tight js-status")}
+        ${td(t("col_uptime"), uptimeCell(m), "cell-tight")}
+        ${actionsTd(
+          `<button class="btn btn-ghost" data-toggle="${m.id}" data-enabled="${m.enabled ? "1" : "0"}" type="button">${esc(
+            m.enabled ? t("stop") : t("start"),
+          )}</button>`,
+          `<button class="btn btn-ghost" data-del="${m.id}" type="button">${esc(t("delete"))}</button>`,
+        )}
       </tr>`,
     )
     .join("");
@@ -348,11 +530,16 @@ function monitorDetailView(m: Monitor, checks: Check[], notifs: Notification[]):
     .map(
       (c) => `
       <tr>
-        <td>${c.status ? `<span class="badge badge-up">${esc(t("badge_up"))}</span>` : `<span class="badge badge-down">${esc(t("badge_down"))}</span>`}</td>
-        <td>${c.status_code ?? "—"}</td>
-        <td>${c.latency != null ? c.latency + " ms" : "—"}</td>
-        <td>${esc(c.error || "")}</td>
-        <td>${esc(c.checked_at)}</td>
+        ${td(
+          t("col_status"),
+          c.status
+            ? `<span class="badge badge-up">${esc(t("badge_up"))}</span>`
+            : `<span class="badge badge-down">${esc(t("badge_down"))}</span>`,
+        )}
+        ${td(t("col_code"), String(c.status_code ?? "—"))}
+        ${td(t("col_latency"), c.latency != null ? c.latency + " ms" : "—")}
+        ${td(t("col_error"), esc(c.error || ""))}
+        ${td(t("col_at"), esc(c.checked_at))}
       </tr>`,
     )
     .join("");
@@ -367,14 +554,17 @@ function monitorDetailView(m: Monitor, checks: Check[], notifs: Notification[]):
     .map(
       (n) => `
       <tr>
-        <td>${esc(n.type)} #${n.id}</td>
-        <td><code>${esc(n.config)}</code></td>
-        <td>${
+        ${td(t("col_notification"), `${esc(n.type)} #${n.id}`)}
+        ${td(t("col_config"), `<code>${esc(n.config)}</code>`)}
+        ${td(
+          t("col_enabled"),
           n.enabled
             ? `<span class="badge badge-up">${esc(t("badge_on"))}</span>`
-            : `<span class="badge badge-off">${esc(t("badge_off"))}</span>`
-        }</td>
-        <td><button class="btn btn-ghost" type="button" data-detach-notif="${n.id}">${esc(t("detach"))}</button></td>
+            : `<span class="badge badge-off">${esc(t("badge_off"))}</span>`,
+        )}
+        ${actionsTd(
+          `<button class="btn btn-ghost" type="button" data-detach-notif="${n.id}">${esc(t("detach"))}</button>`,
+        )}
       </tr>`,
     )
     .join("");
@@ -500,19 +690,20 @@ function notificationsView(list: Notification[]): string {
     .map(
       (n) => `
       <tr>
-        <td>${esc(n.type)} #${n.id}</td>
-        <td>${formatNotifConfig(n.type, n.config)}</td>
-        <td>${
+        ${td(t("col_type"), `${esc(n.type)} #${n.id}`)}
+        ${td(t("col_config"), formatNotifConfig(n.type, n.config))}
+        ${td(
+          t("col_enabled"),
           n.enabled
             ? `<span class="badge badge-up">${esc(t("badge_on"))}</span>`
-            : `<span class="badge badge-off">${esc(t("badge_off"))}</span>`
-        }</td>
-        <td class="row-actions">
-          <button class="btn btn-ghost" data-toggle="${n.id}" data-enabled="${n.enabled ? "1" : "0"}" type="button">${esc(
+            : `<span class="badge badge-off">${esc(t("badge_off"))}</span>`,
+        )}
+        ${actionsTd(
+          `<button class="btn btn-ghost" data-toggle="${n.id}" data-enabled="${n.enabled ? "1" : "0"}" type="button">${esc(
             n.enabled ? t("disable") : t("enable"),
-          )}</button>
-          <button class="btn btn-ghost" data-del="${n.id}" type="button">${esc(t("delete"))}</button>
-        </td>
+          )}</button>`,
+          `<button class="btn btn-ghost" data-del="${n.id}" type="button">${esc(t("delete"))}</button>`,
+        )}
       </tr>`,
     )
     .join("");
@@ -585,11 +776,11 @@ function statusPagesView(list: StatusPage[]): string {
     .map(
       (sp) => `
       <tr>
-        <td><a href="/status-pages/${sp.id}" data-link>${esc(sp.name)}</a></td>
-        <td>${esc(sp.slug)}</td>
-        <td>${sp.public ? esc(t("public_label")) : esc(t("private"))}</td>
-        <td>${sp.public ? `<a href="/s/${esc(sp.slug)}" data-link>/s/${esc(sp.slug)}</a>` : "—"}</td>
-        <td><button class="btn btn-ghost" data-del="${sp.id}" type="button">${esc(t("delete"))}</button></td>
+        ${td(t("col_name"), `<a href="/status-pages/${sp.id}" data-link>${esc(sp.name)}</a>`)}
+        ${td(t("col_slug"), esc(sp.slug))}
+        ${td(t("col_visibility"), sp.public ? esc(t("public_label")) : esc(t("private")))}
+        ${td(t("col_link"), sp.public ? `<a href="/s/${esc(sp.slug)}" data-link>/s/${esc(sp.slug)}</a>` : "—")}
+        ${actionsTd(`<button class="btn btn-ghost" data-del="${sp.id}" type="button">${esc(t("delete"))}</button>`)}
       </tr>`,
     )
     .join("");
@@ -634,9 +825,11 @@ function statusPageDetailView(sp: StatusPage, allMonitors: Monitor[]): string {
     .map(
       (m) => `
       <tr data-monitor-id="${m.id}">
-        <td>${esc(m.name)}</td>
-        <td class="js-status">${statusBadge(m)}</td>
-        <td><button class="btn btn-ghost" type="button" data-detach="${m.id}">${esc(t("detach"))}</button></td>
+        ${td(t("col_monitor"), esc(m.name))}
+        ${td(t("col_status"), statusBadge(m), "js-status")}
+        ${actionsTd(
+          `<button class="btn btn-ghost" type="button" data-detach="${m.id}">${esc(t("detach"))}</button>`,
+        )}
       </tr>`,
     )
     .join("");
@@ -732,69 +925,95 @@ function profileView(user: Me): string {
   );
 }
 
-function publicStatusView(name: string, slug: string, list: Monitor[]): string {
-  const rows = list
-    .map(
-      (m) => `
-      <tr data-monitor-id="${m.id}">
-        <td>${esc(m.name)}</td>
-        <td>${esc(m.type)}</td>
-        <td class="js-status">${statusBadge(m)}</td>
-        <td>${uptimeCell(m)}</td>
-        <td class="js-latency">${m.last_latency != null ? esc(m.last_latency) + " ms" : "—"}</td>
-        <td class="js-checked">${esc(m.last_checked_at || "—")}</td>
-      </tr>`,
-    )
-    .join("");
+function publicStatusView(page: PublicStatusPage): string {
+  const list = page.monitors || [];
+  const overall = page.overall_status || "operational";
 
   return `
     <div class="shell shell-wide">
       <section class="hero">
         <p class="pulse">${esc(t("public_label"))}</p>
-        <h1 class="brand">${esc(name)}</h1>
-        <p class="tagline">${esc(t("status_page_tag"))} <code>${esc(slug)}</code></p>
+        <h1 class="brand">${esc(page.name)}</h1>
+        <p class="tagline">${esc(t("status_page_tag"))} <code>${esc(page.slug)}</code></p>
+      </section>
+      <section class="status-banner ${overallBannerClass(overall)} js-status-banner">
+        <span class="status-banner-dot" aria-hidden="true"></span>
+        <span class="js-status-banner-text">${esc(overallLabel(overall))}</span>
       </section>
       <section class="panel">
+        <h2 class="section-title">${esc(t("components"))}</h2>
         ${
           list.length
-            ? `<div class="table-wrap"><table class="table"><thead><tr><th>${esc(t("col_service"))}</th><th>${esc(t("col_type"))}</th><th>${esc(t("col_status"))}</th><th>${esc(t("col_uptime"))}</th><th>${esc(t("col_latency"))}</th><th>${esc(t("col_checked"))}</th></tr></thead><tbody>${rows}</tbody></table></div>`
+            ? `<ul class="status-components">${publicComponentsHTML(list)}</ul>`
             : `<p class="list-empty">${esc(t("no_monitors_short"))}</p>`
         }
+      </section>
+      <section class="panel">
+        <h2 class="section-title">${esc(t("past_incidents"))}</h2>
+        <div class="js-incidents">${incidentsHTML(page.incidents || [])}</div>
       </section>
       ${footer()}
     </div>
   `;
 }
 
-function embedStatusView(name: string, slug: string, list: Monitor[], theme: string): string {
-  const down = list.some((m) => m.enabled && m.last_status === false);
-  const summary = list.length === 0 ? t("no_monitors_short") : down ? t("some_down") : t("all_operational");
-  const rows = list
+function embedStatusView(page: PublicStatusPage, theme: string, variant: string): string {
+  const list = page.monitors || [];
+  const overall = page.overall_status || "operational";
+  const summary = list.length === 0 ? t("no_monitors_short") : overallLabel(overall);
+  const mini = variant === "mini";
+  const themeClass = theme === "light" ? "theme-light" : "theme-dark";
+  const variantClass = mini ? "variant-mini" : "variant-normal";
+
+  const items = list
     .map(
       (m) => `
-      <tr data-monitor-id="${m.id}">
-        <td>${esc(m.name)}</td>
-        <td class="cell-tight js-status">${statusBadge(m)}</td>
-        <td class="cell-tight">${uptimeCell(m)}</td>
-        <td class="cell-tight js-latency">${m.last_latency != null ? esc(m.last_latency) + " ms" : "—"}</td>
-      </tr>`,
+        <li class="embed-item" data-monitor-id="${m.id}">
+          <div class="embed-item-main">
+            <span class="embed-name">${esc(m.name)}</span>
+            <span class="js-status">${statusBadge(m)}</span>
+          </div>
+          <div class="embed-item-meta">
+            <span><span class="embed-k">${esc(t("col_uptime"))}</span> ${uptimeCell(m)}</span>
+            <span><span class="embed-k">${esc(t("col_latency"))}</span> <span class="js-latency">${
+              m.last_latency != null ? esc(m.last_latency) + " ms" : "—"
+            }</span></span>
+          </div>
+          ${hourBarHTML(m.uptime_hours)}
+        </li>`,
     )
     .join("");
 
-  const themeClass = theme === "light" ? "theme-light" : "theme-dark";
   return `
-    <div class="embed-shell ${themeClass}">
+    <div class="embed-shell ${themeClass} ${variantClass}">
       <div class="embed-card">
-        <div class="embed-head">
-          <h1>${esc(name)}</h1>
-          <p class="embed-summary js-embed-summary">${esc(summary)}</p>
+        <header class="embed-head">
+          <div class="embed-titles">
+            <h1>${esc(page.name)}</h1>
+          </div>
+          ${
+            mini
+              ? ""
+              : `<a class="embed-powered" href="${esc(originBase())}/s/${esc(page.slug)}" target="_blank" rel="noopener">${esc(t("powered_by"))}</a>`
+          }
+        </header>
+        <div class="status-banner embed-banner ${overallBannerClass(overall)} js-status-banner">
+          <span class="status-banner-dot" aria-hidden="true"></span>
+          <span class="js-status-banner-text js-embed-summary">${esc(summary)}</span>
         </div>
         ${
           list.length
-            ? `<div class="table-wrap"><table class="table"><thead><tr><th>${esc(t("col_service"))}</th><th>${esc(t("col_status"))}</th><th>${esc(t("col_uptime"))}</th><th>${esc(t("col_latency"))}</th></tr></thead><tbody>${rows}</tbody></table></div>`
-            : `<p class="list-empty">${esc(t("no_monitors_short"))}</p>`
+            ? `<ul class="embed-list">${items}</ul>`
+            : `<p class="embed-empty">${esc(t("no_monitors_short"))}</p>`
         }
-        <p class="embed-foot"><a href="${esc(originBase())}/s/${esc(slug)}" target="_blank" rel="noopener">${esc(t("powered_by"))}</a></p>
+        ${
+          mini
+            ? ""
+            : `<div class="embed-incidents">
+                <h2 class="embed-section-title">${esc(t("past_incidents"))}</h2>
+                <div class="js-incidents" data-limit="2">${incidentsHTML(page.incidents || [], 2)}</div>
+              </div>`
+        }
       </div>
     </div>
   `;
@@ -840,6 +1059,7 @@ async function render(): Promise<void> {
   if (embedMatch) {
     const embedLang = (params.get("lang") as Lang) || "en";
     const theme = params.get("theme") || "dark";
+    const variant = params.get("variant") === "mini" ? "mini" : "normal";
     const fill = params.get("fill") === "1" || params.get("height") === "100%";
     document.documentElement.classList.add("embed-mode");
     document.body.classList.add("embed-mode");
@@ -854,12 +1074,19 @@ async function render(): Promise<void> {
     try {
       const page = await statusPages.public(embedMatch[1]);
       document.documentElement.lang = embedLang === "zh" ? "zh-CN" : embedLang;
-      app.innerHTML = withLang(embedLang, () =>
-        embedStatusView(page.name, page.slug, page.monitors || [], theme),
-      );
+      app.innerHTML = withLang(embedLang, () => embedStatusView(page, theme, variant));
       startEmbedHostBridge(fill);
+      let prevById = new Map<number, boolean>();
+      (page.monitors || []).forEach((m) => {
+        if (m.last_status != null) prevById.set(m.id, m.last_status);
+      });
       disposeLive = connectSlugLive(page.slug, (ev) => {
         withLang(embedLang, () => applyStatusEvent(app, ev));
+        const prev = prevById.get(ev.id);
+        if (prev !== undefined && prev !== ev.status) {
+          void refreshPublicHistory(app, page.slug, embedLang);
+        }
+        prevById.set(ev.id, ev.status);
       });
     } catch (err) {
       app.innerHTML = withLang(embedLang, () =>
@@ -877,9 +1104,20 @@ async function render(): Promise<void> {
   if (publicMatch) {
     try {
       const page = await statusPages.public(publicMatch[1]);
-      app.innerHTML = publicStatusView(page.name, page.slug, page.monitors || []);
+      app.innerHTML = publicStatusView(page);
       bindLang(app);
-      disposeLive = connectSlugLive(page.slug, (ev) => applyStatusEvent(app, ev));
+      let prevById = new Map<number, boolean>();
+      (page.monitors || []).forEach((m) => {
+        if (m.last_status != null) prevById.set(m.id, m.last_status);
+      });
+      disposeLive = connectSlugLive(page.slug, (ev) => {
+        applyStatusEvent(app, ev);
+        const prev = prevById.get(ev.id);
+        if (prev !== undefined && prev !== ev.status) {
+          void refreshPublicHistory(app, page.slug);
+        }
+        prevById.set(ev.id, ev.status);
+      });
     } catch (err) {
       app.innerHTML = `<div class="shell"><section class="panel"><h2>${esc(t("not_found"))}</h2><p class="error">${esc(err instanceof Error ? err.message : "error")}</p></section>${footer()}</div>`;
       bindLang(app);
@@ -979,6 +1217,18 @@ async function render(): Promise<void> {
         } catch (err) {
           error.textContent = err instanceof Error ? err.message : "error";
         }
+      });
+      app.querySelectorAll<HTMLButtonElement>("[data-toggle]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = Number(btn.dataset.toggle);
+          const enabled = btn.dataset.enabled !== "1";
+          try {
+            await monitors.update(id, { enabled });
+            go("/monitors");
+          } catch (err) {
+            alert(err instanceof Error ? err.message : "error");
+          }
+        });
       });
       app.querySelectorAll<HTMLButtonElement>("[data-del]").forEach((btn) => {
         btn.addEventListener("click", async () => {

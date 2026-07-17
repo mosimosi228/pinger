@@ -14,6 +14,7 @@ type Querier interface {
 	AttachNotificationToMonitor(ctx context.Context, arg AttachNotificationToMonitorParams) error
 	ClaimDueMonitors(ctx context.Context, limitCount int64) ([]*Monitor, error)
 	CreateCheck(ctx context.Context, arg CreateCheckParams) (*Check, error)
+	CreateIncident(ctx context.Context, arg CreateIncidentParams) (*Incident, error)
 	CreateMonitor(ctx context.Context, arg CreateMonitorParams) (*Monitor, error)
 	CreateNotification(ctx context.Context, arg CreateNotificationParams) (*Notification, error)
 	CreateStatusPage(ctx context.Context, arg CreateStatusPageParams) (*StatusPage, error)
@@ -21,6 +22,8 @@ type Querier interface {
 	DeleteMonitor(ctx context.Context, arg DeleteMonitorParams) error
 	DeleteNotification(ctx context.Context, arg DeleteNotificationParams) error
 	DeleteOldChecks(ctx context.Context, before string) error
+	DeleteOldMonitorUptimeHourly(ctx context.Context, before string) error
+	DeleteOldResolvedIncidents(ctx context.Context, before sql.NullString) error
 	DeleteStatusPage(ctx context.Context, arg DeleteStatusPageParams) error
 	DeleteUser(ctx context.Context, id string) error
 	DetachMonitorFromStatusPage(ctx context.Context, arg DetachMonitorFromStatusPageParams) error
@@ -35,6 +38,7 @@ type Querier interface {
 	GetMonitorByIdAndUser(ctx context.Context, arg GetMonitorByIdAndUserParams) (*Monitor, error)
 	GetNotificationById(ctx context.Context, id int64) (*Notification, error)
 	GetNotificationByIdAndUser(ctx context.Context, arg GetNotificationByIdAndUserParams) (*Notification, error)
+	GetOpenIncidentByMonitor(ctx context.Context, monitorID int64) (*Incident, error)
 	GetPublicStatusPageBySlug(ctx context.Context, slug string) (*StatusPage, error)
 	GetStatusPageById(ctx context.Context, id int64) (*StatusPage, error)
 	GetStatusPageByIdAndUser(ctx context.Context, arg GetStatusPageByIdAndUserParams) (*StatusPage, error)
@@ -50,6 +54,8 @@ type Querier interface {
 	ListEnabledMonitorsByUser(ctx context.Context, userID string) ([]*Monitor, error)
 	ListEnabledNotificationsByMonitor(ctx context.Context, monitorID int64) ([]*Notification, error)
 	ListEnabledNotificationsByUser(ctx context.Context, userID string) ([]*Notification, error)
+	ListIncidentsByMonitorIDsSince(ctx context.Context, arg ListIncidentsByMonitorIDsSinceParams) ([]*ListIncidentsByMonitorIDsSinceRow, error)
+	ListMonitorUptimeHourlySince(ctx context.Context, arg ListMonitorUptimeHourlySinceParams) ([]*MonitorUptimeHourly, error)
 	ListMonitorsByNotification(ctx context.Context, notificationID int64) ([]*Monitor, error)
 	ListMonitorsByStatusPage(ctx context.Context, statusPageID int64) ([]*Monitor, error)
 	ListMonitorsByUser(ctx context.Context, userID string) ([]*Monitor, error)
@@ -57,12 +63,14 @@ type Querier interface {
 	ListNotificationsByUser(ctx context.Context, userID string) ([]*Notification, error)
 	ListStatusPagesByMonitor(ctx context.Context, monitorID int64) ([]*StatusPage, error)
 	ListStatusPagesByUser(ctx context.Context, userID string) ([]*StatusPage, error)
+	ResolveOpenIncidentByMonitor(ctx context.Context, monitorID int64) (*Incident, error)
 	SetActive(ctx context.Context, id string) error
 	UpdateLastLogin(ctx context.Context, arg UpdateLastLoginParams) error
 	UpdateMonitor(ctx context.Context, arg UpdateMonitorParams) (*Monitor, error)
 	UpdateNotification(ctx context.Context, arg UpdateNotificationParams) (*Notification, error)
 	UpdateStatusPage(ctx context.Context, arg UpdateStatusPageParams) (*StatusPage, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (*User, error)
+	UpsertMonitorUptimeHourly(ctx context.Context, arg UpsertMonitorUptimeHourlyParams) error
 }
 
 var _ Querier = (*Queries)(nil)

@@ -51,10 +51,40 @@ type StatusPageResponse struct {
 	Monitors []MonitorResponse `json:"monitors,omitempty"`
 }
 
+type PublicHourBucket struct {
+	Hour      string   `json:"hour"`
+	UptimePct *float64 `json:"uptime_pct,omitempty"`
+	Total     int64    `json:"total"`
+}
+
+type PublicMonitorResponse struct {
+	ID          int64              `json:"id"`
+	Name        string             `json:"name"`
+	Type        string             `json:"type"`
+	Enabled     bool               `json:"enabled"`
+	LastStatus  *bool              `json:"last_status,omitempty"`
+	LastLatency *int64             `json:"last_latency,omitempty"`
+	LastChecked string             `json:"last_checked_at,omitempty"`
+	Uptime1h    *float64           `json:"uptime_1h,omitempty"`
+	UptimeHours []PublicHourBucket `json:"uptime_hours"`
+}
+
+type PublicIncidentResponse struct {
+	ID          int64  `json:"id"`
+	MonitorID   int64  `json:"monitor_id"`
+	MonitorName string `json:"monitor_name"`
+	Title       string `json:"title"`
+	Message     string `json:"message"`
+	StartedAt   string `json:"started_at"`
+	ResolvedAt  string `json:"resolved_at,omitempty"`
+}
+
 type PublicStatusPageResponse struct {
-	Name     string            `json:"name"`
-	Slug     string            `json:"slug"`
-	Monitors []MonitorResponse `json:"monitors"`
+	Name          string                   `json:"name"`
+	Slug          string                   `json:"slug"`
+	OverallStatus string                   `json:"overall_status"`
+	Monitors      []PublicMonitorResponse  `json:"monitors"`
+	Incidents     []PublicIncidentResponse `json:"incidents"`
 }
 
 func MonitorFromModel(m *mapping.Monitor) MonitorResponse {

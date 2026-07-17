@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/render"
 	"github.com/mosimosi228/pinger/internal/app/delivery/http/answer"
@@ -233,13 +234,105 @@ func (h *StatusPageController) PublicGet(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	since := time.Now().UTC().Add(-25 * time.Hour).Format("2006-01-02 15:04:05")
 	resp := answer.PublicStatusPageResponse{
-		Name:     sp.Name,
-		Slug:     sp.Slug,
-		Monitors: make([]answer.MonitorResponse, 0, len(monitors)),
+		Name:          sp.Name,
+		Slug:          sp.Slug,
+		OverallStatus: "operational",
+		Monitors:      make([]answer.PublicMonitorResponse, 0, len(monitors)),
+		Incidents:     []answer.PublicIncidentResponse{},
 	}
+
+	downCount := 0
+	enabledCount := 0
 	for _, m := range monitors {
-		resp.Monitors = append(resp.Monitors, enrichMonitor(r, m))
+		pub := enrichPublicMonitor(r, m)
+		resp.Monitors = append(resp.Monitors, pub)
+		if !pub.Enabled {
+			continue
+		}
+		enabledCount++
+		if pub.LastStatus != nil && !*pub.LastStatus {
+			downCount++
+		}
+
+		incs, err := repo.GetRepository().ListIncidentsByMonitorIDsSince(r.Context(), mapping.ListIncidentsByMonitorIDsSinceParams{
+			MonitorID: m.ID,
+			Since:     since,
+		})
+		if err != nil {
+			continue
+		}
+		for _, inc := range incs {
+			item := answer.PublicIncidentResponse{
+				ID:          inc.ID,
+				MonitorID:   inc.MonitorID,
+				MonitorName: inc.MonitorName,
+				Title:       inc.Title,
+				Message:     inc.Message,
+				StartedAt:   inc.StartedAt,
+			}
+			if inc.ResolvedAt.Valid {
+				item.ResolvedAt = inc.ResolvedAt.String
+			}
+			resp.Incidents = append(resp.Incidents, item)
+		}
 	}
+
+	switch {
+	case enabledCount == 0:
+		resp.OverallStatus = "operational"
+	case downCount == 0:
+		resp.OverallStatus = "operational"
+	case downCount >= enabledCount:
+		resp.OverallStatus = "major_outage"
+	default:
+		resp.OverallStatus = "degraded"
+	}
+
 	render.JSON(w, r, resp)
+}
+
+func enrichPublicMonitor(r *http.Request, m *mapping.Monitor) answer.PublicMonitorResponse {
+	full := enrichMonitor(r, m)
+	return answer.PublicMonitorResponse{
+		ID:          full.ID,
+		Name:        full.Name,
+		Type:        full.Type,
+		Enabled:     full.Enabled,
+		LastStatus:  full.LastStatus,
+		LastLatency: full.LastLatency,
+		LastChecked: full.LastChecked,
+		Uptime1h:    full.Uptime1h,
+		UptimeHours: buildUptimeHours(r, m.ID),
+	}
+}
+
+func buildUptimeHours(r *http.Request, monitorID int64) []answer.PublicHourBucket {
+	now := time.Now().UTC().Truncate(time.Hour)
+	since := now.Add(-23 * time.Hour).Format("2006-01-02 15:04:05")
+	rows, err := repo.GetRepository().ListMonitorUptimeHourlySince(r.Context(), mapping.ListMonitorUptimeHourlySinceParams{
+		MonitorID: monitorID,
+		Since:     since,
+	})
+	byHour := map[string]*mapping.MonitorUptimeHourly{}
+	if err == nil {
+		for _, row := range rows {
+			byHour[row.HourStart] = row
+		}
+	}
+
+	out := make([]answer.PublicHourBucket, 0, 24)
+	for i := 23; i >= 0; i-- {
+		h := now.Add(-time.Duration(i) * time.Hour)
+		key := h.Format("2006-01-02 15:04:05")
+		bucket := answer.PublicHourBucket{Hour: key, Total: 0}
+		if row, ok := byHour[key]; ok && row.Total > 0 {
+			pct := 100.0 * float64(row.Ok) / float64(row.Total)
+			bucket.UptimePct = &pct
+			bucket.Total = row.Total
+		}
+		out = append(out, bucket)
+	}
+	return out
 }

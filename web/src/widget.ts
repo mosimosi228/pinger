@@ -5,13 +5,12 @@
  *   <script src="https://your-host/widget.js"
  *           data-slug="my-status"
  *           data-theme="light"
+ *           data-variant="normal"
  *           data-height="auto"
  *           async></script>
  *
- * data-height:
- *   auto   — resize iframe to content (default)
- *   100%   — fill parent height (parent must have height)
- *   480    — fixed pixels
+ * data-variant: normal | mini
+ * data-height:  auto | 100% | 480
  */
 (function () {
   const script = document.currentScript as HTMLScriptElement | null;
@@ -33,6 +32,8 @@
     el.dataset.pingerMounted = "1";
 
     const theme = el.getAttribute("data-theme") || script?.getAttribute("data-theme") || "dark";
+    const variantRaw = (el.getAttribute("data-variant") || script?.getAttribute("data-variant") || "normal").trim();
+    const variant = variantRaw === "mini" ? "mini" : "normal";
     const heightRaw = (el.getAttribute("data-height") || script?.getAttribute("data-height") || "auto").trim();
     const refresh = el.getAttribute("data-refresh") || script?.getAttribute("data-refresh") || "60";
     const lang = el.getAttribute("data-lang") || script?.getAttribute("data-lang") || "en";
@@ -49,6 +50,7 @@
     const iframe = document.createElement("iframe");
     const qs = new URLSearchParams({
       theme,
+      variant,
       refresh,
       lang,
     });
@@ -70,7 +72,7 @@
       "width:100%",
       `height:${heightCSS}`,
       "border:0",
-      "border-radius:12px",
+      "border-radius:0",
       "display:block",
       "background:transparent",
       "color-scheme:normal",

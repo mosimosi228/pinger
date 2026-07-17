@@ -104,18 +104,21 @@ Attach Telegram or webhook channels to a monitor. On **up ↔ down** you get a f
 - previous & current status, HTTP code, latency, error  
 - **downtime duration** on recovery  
 
+Webhook POSTs include `X-Pinger-Signature: sha256=<hex>` — HMAC-SHA256 of the raw JSON body using your profile **API key** as the secret.
 ### Status pages & embed
 
 Public page: `/s/{slug}`
 
 ```html
-<div style="height:420px">
-  <iframe
-    src="https://your-host/embed/s/SLUG?theme=light&lang=en&fill=1"
-    style="width:100%;height:100%;border:0;background:transparent"
-    allowtransparency="true"
-  ></iframe>
-</div>
+<script
+  src="https://your-host/widget.js"
+  data-slug="SLUG"
+  data-theme="light"
+  data-variant="normal"
+  data-height="auto"
+  data-lang="en"
+  async
+></script>
 ```
 
 ```html
@@ -123,17 +126,13 @@ Public page: `/s/{slug}`
   src="https://your-host/widget.js"
   data-slug="SLUG"
   data-theme="light"
+  data-variant="mini"
   data-height="auto"
-  data-lang="en"
   async
 ></script>
 ```
 
-Optional attrs: `data-theme="light|dark"`, `data-height="auto|100%|480"`, `data-refresh="60"`, `data-lang="en"`.
-
-- `data-height="auto"` (default) — iframe grows to content height  
-- `data-height="100%"` — fill parent (parent must have a height)  
-- `data-height="480"` — fixed pixels  
+Optional attrs: `data-theme="light|dark"`, `data-variant="normal|mini"`, `data-height="auto|100%|480"`, `data-refresh="60"`, `data-lang="en"`.
 
 ### Live updates
 

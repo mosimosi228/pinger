@@ -17,6 +17,7 @@ import (
 	"github.com/mosimosi228/pinger/internal/infra/cache"
 	mapping "github.com/mosimosi228/pinger/internal/infra/db/maps"
 	"github.com/mosimosi228/pinger/internal/infra/db/repo"
+	pkghmac "github.com/mosimosi228/pinger/pkg/hmac"
 )
 
 type telegramConfig struct {
@@ -66,6 +67,11 @@ func OnStatusChange(ctx context.Context, monitor *mapping.Monitor, prev, curr *m
 		return err
 	}
 
+	apiKey := ""
+	if user, uerr := repo.GetRepository().GetUserById(ctx, monitor.UserID); uerr == nil && user != nil && user.ApiKey.Valid {
+		apiKey = user.ApiKey.String
+	}
+
 	payload := buildAlert(ctx, monitor, prev, curr)
 	for _, n := range notifications {
 		if n == nil || n.Enabled != 1 {
@@ -77,7 +83,7 @@ func OnStatusChange(ctx context.Context, monitor *mapping.Monitor, prev, curr *m
 				slog.Warn("telegram notify", slog.Int64("notification_id", n.ID), slog.Any("err", err))
 			}
 		case "webhook":
-			if err := sendWebhook(ctx, n.Config, payload); err != nil {
+			if err := sendWebhook(ctx, n.Config, payload, apiKey); err != nil {
 				slog.Warn("webhook notify", slog.Int64("notification_id", n.ID), slog.Any("err", err))
 			}
 		default:
@@ -569,7 +575,7 @@ func telegramPOST(ctx context.Context, token, method string, payload map[string]
 	return nil
 }
 
-func sendWebhook(ctx context.Context, raw string, payload alertPayload) error {
+func sendWebhook(ctx context.Context, raw string, payload alertPayload, apiKey string) error {
 	var cfg webhookConfig
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
 		return fmt.Errorf("parse webhook config: %w", err)
@@ -587,6 +593,10 @@ func sendWebhook(ctx context.Context, raw string, payload alertPayload) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		sig := pkghmac.SignHex([]byte(apiKey), body)
+		req.Header.Set("X-Pinger-Signature", "sha256="+sig)
+	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)

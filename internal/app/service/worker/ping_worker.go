@@ -88,6 +88,8 @@ func runCheck(parent context.Context, monitor *mapping.Monitor) {
 		return
 	}
 
+	recordHourlyUptime(dbCtx, monitor.ID, status == 1)
+
 	cache.LatestCheck().Set(monitor.ID, check)
 
 	live.PublishCheck(parent, monitor, check)
@@ -98,9 +100,53 @@ func runCheck(parent context.Context, monitor *mapping.Monitor) {
 	}
 	shouldAlert, prev := confirmedStatusChange(dbCtx, monitor.ID, needed)
 	if shouldAlert {
+		syncIncident(dbCtx, monitor, check)
 		if err := notify.OnStatusChange(parent, monitor, prev, check); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Warn("notify failed", slog.Int64("monitor_id", monitor.ID), slog.Any("err", err))
 		}
+	}
+}
+
+func recordHourlyUptime(ctx context.Context, monitorID int64, ok bool) {
+	hourStart := time.Now().UTC().Truncate(time.Hour).Format("2006-01-02 15:04:05")
+	okInc := int64(0)
+	if ok {
+		okInc = 1
+	}
+	if err := repo.GetRepository().UpsertMonitorUptimeHourly(ctx, mapping.UpsertMonitorUptimeHourlyParams{
+		MonitorID: monitorID,
+		HourStart: hourStart,
+		OkInc:     okInc,
+	}); err != nil {
+		slog.Debug("upsert hourly uptime", slog.Int64("monitor_id", monitorID), slog.Any("err", err))
+	}
+}
+
+func syncIncident(ctx context.Context, monitor *mapping.Monitor, check *mapping.Check) {
+	if check.Status == 1 {
+		if _, err := repo.GetRepository().ResolveOpenIncidentByMonitor(ctx, monitor.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			slog.Debug("resolve incident", slog.Int64("monitor_id", monitor.ID), slog.Any("err", err))
+		}
+		return
+	}
+
+	msg := "service is down"
+	if check.Error.Valid && check.Error.String != "" {
+		msg = check.Error.String
+	}
+	title := monitor.Name + " is down"
+	if _, err := repo.GetRepository().GetOpenIncidentByMonitor(ctx, monitor.ID); err == nil {
+		return
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		slog.Debug("get open incident", slog.Int64("monitor_id", monitor.ID), slog.Any("err", err))
+		return
+	}
+	if _, err := repo.GetRepository().CreateIncident(ctx, mapping.CreateIncidentParams{
+		MonitorID: monitor.ID,
+		Title:     title,
+		Message:   msg,
+	}); err != nil {
+		slog.Debug("create incident", slog.Int64("monitor_id", monitor.ID), slog.Any("err", err))
 	}
 }
 

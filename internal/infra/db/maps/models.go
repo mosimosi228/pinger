@@ -18,6 +18,15 @@ type Check struct {
 	CheckedAt  string         `json:"checked_at"`
 }
 
+type Incident struct {
+	ID         int64          `json:"id"`
+	MonitorID  int64          `json:"monitor_id"`
+	Title      string         `json:"title"`
+	Message    string         `json:"message"`
+	StartedAt  string         `json:"started_at"`
+	ResolvedAt sql.NullString `json:"resolved_at"`
+}
+
 type Monitor struct {
 	ID            int64  `json:"id"`
 	UserID        string `json:"user_id"`
@@ -35,6 +44,13 @@ type Monitor struct {
 type MonitorNotification struct {
 	MonitorID      int64 `json:"monitor_id"`
 	NotificationID int64 `json:"notification_id"`
+}
+
+type MonitorUptimeHourly struct {
+	MonitorID int64  `json:"monitor_id"`
+	HourStart string `json:"hour_start"`
+	Ok        int64  `json:"ok"`
+	Total     int64  `json:"total"`
 }
 
 type Notification struct {

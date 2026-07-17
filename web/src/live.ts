@@ -111,16 +111,56 @@ export function applyStatusEvent(root: ParentNode, ev: StatusEvent): void {
     }
   });
 
-  const summary = root.querySelector(".js-embed-summary");
-  if (summary) {
-    const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-monitor-id]"));
-    let anyDown = false;
-    const any = rows.length > 0;
-    rows.forEach((row) => {
-      if (row.querySelector(".badge-down")) anyDown = true;
-    });
-    if (!any) summary.textContent = t("no_monitors_short");
-    else if (anyDown) summary.textContent = t("some_down");
-    else summary.textContent = t("all_operational");
+  const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-monitor-id]"));
+  let downCount = 0;
+  let upCount = 0;
+  rows.forEach((row) => {
+    if (row.querySelector(".badge-down")) downCount += 1;
+    if (row.querySelector(".badge-up")) upCount += 1;
+  });
+  const enabledCount = downCount + upCount;
+  const any = rows.length > 0;
+
+  let overall = "operational";
+  let summaryText = t("all_operational");
+  let pillClass = "up";
+  if (!any) {
+    summaryText = t("no_monitors_short");
+    pillClass = "idle";
+  } else if (enabledCount === 0) {
+    summaryText = t("all_operational");
+    pillClass = "idle";
+  } else if (downCount === 0) {
+    overall = "operational";
+    summaryText = t("all_operational");
+    pillClass = "up";
+  } else if (downCount >= enabledCount) {
+    overall = "major_outage";
+    summaryText = t("status_major");
+    pillClass = "down";
+  } else {
+    overall = "degraded";
+    summaryText = t("status_degraded");
+    pillClass = "down";
   }
+
+  const summary = root.querySelector(".js-embed-summary");
+  if (summary) summary.textContent = summaryText;
+
+  const pill = root.querySelector(".js-embed-pill");
+  if (pill) {
+    pill.textContent = summaryText;
+    pill.classList.remove("up", "down", "idle");
+    pill.classList.add(pillClass);
+  }
+
+  const banner = root.querySelector(".js-status-banner");
+  const bannerText = root.querySelector(".js-status-banner-text");
+  if (banner) {
+    banner.classList.remove("ok", "degraded", "major");
+    banner.classList.add(
+      overall === "major_outage" ? "major" : overall === "degraded" ? "degraded" : "ok",
+    );
+  }
+  if (bannerText) bannerText.textContent = summaryText;
 }
