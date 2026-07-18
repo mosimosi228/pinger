@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/go-chi/render"
+	"github.com/mosimosi228/kit/http_processor"
 	"github.com/mosimosi228/pinger/internal/app/delivery/http/answer"
 	"github.com/mosimosi228/pinger/internal/app/delivery/http/request"
 	"github.com/mosimosi228/pinger/internal/infra/cache"
 	mapping "github.com/mosimosi228/pinger/internal/infra/db/maps"
 	"github.com/mosimosi228/pinger/internal/infra/db/repo"
-	"github.com/mosimosi228/pinger/pkg/http_processor"
 )
 
 type MonitorController struct{}

@@ -3,11 +3,11 @@ package handler
 import (
 	"net/http"
 
+	"github.com/mosimosi228/kit/auth"
 	"github.com/mosimosi228/pinger/internal/app/service/live"
 	"github.com/mosimosi228/pinger/internal/infra/cache"
 	mapping "github.com/mosimosi228/pinger/internal/infra/db/maps"
 	"github.com/mosimosi228/pinger/internal/infra/db/repo"
-	"github.com/mosimosi228/pinger/pkg/auth"
 )
 
 type LiveController struct{}

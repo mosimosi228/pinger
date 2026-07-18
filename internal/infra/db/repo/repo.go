@@ -3,8 +3,8 @@ package repo
 import (
 	"context"
 	"database/sql"
+	"github.com/mosimosi228/kit/sqlite"
 	mapping "github.com/mosimosi228/pinger/internal/infra/db/maps"
-	"github.com/mosimosi228/pinger/pkg/sqlite"
 	"sync"
 )
 

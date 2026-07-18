@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	"github.com/go-chi/render"
+	pkgauth "github.com/mosimosi228/kit/auth"
 	"github.com/mosimosi228/pinger/internal/app/delivery/http/answer"
 	infracache "github.com/mosimosi228/pinger/internal/infra/cache"
 	mapping "github.com/mosimosi228/pinger/internal/infra/db/maps"
 	"github.com/mosimosi228/pinger/internal/infra/db/repo"
-	pkgauth "github.com/mosimosi228/pinger/pkg/auth"
 )
 
 // RequireAuth accepts Authorization: Bearer <access> or X-API-Key.

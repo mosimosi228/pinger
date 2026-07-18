@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
+	pkghmac "github.com/mosimosi228/kit/hmac"
 	"github.com/mosimosi228/pinger/internal/infra/cache"
 	mapping "github.com/mosimosi228/pinger/internal/infra/db/maps"
 	"github.com/mosimosi228/pinger/internal/infra/db/repo"
-	pkghmac "github.com/mosimosi228/pinger/pkg/hmac"
 )
 
 type telegramConfig struct {

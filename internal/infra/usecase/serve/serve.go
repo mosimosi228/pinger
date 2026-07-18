@@ -8,15 +8,16 @@ import (
 	"net/http"
 	"time"
 
+	pkgauth "github.com/mosimosi228/kit/auth"
+	"github.com/mosimosi228/kit/logger"
+	"github.com/mosimosi228/kit/sqlite"
 	"github.com/mosimosi228/pinger/config"
 	router "github.com/mosimosi228/pinger/internal/app/delivery/http"
 	"github.com/mosimosi228/pinger/internal/app/service/scheduler"
 	"github.com/mosimosi228/pinger/internal/app/service/worker"
 	infracache "github.com/mosimosi228/pinger/internal/infra/cache"
 	mapping "github.com/mosimosi228/pinger/internal/infra/db/maps"
-	pkgauth "github.com/mosimosi228/pinger/pkg/auth"
-	"github.com/mosimosi228/pinger/pkg/logger"
-	"github.com/mosimosi228/pinger/pkg/sqlite"
+	"github.com/mosimosi228/pinger/migrations"
 )
 
 func Execute(ctx context.Context) error {
@@ -26,7 +27,7 @@ func Execute(ctx context.Context) error {
 		OutputFileName: config.Environments.Logs.OutFilename,
 	}, []logger.LoggerHandler{logger.ConsoleType, logger.FileType}))
 
-	if err := sqlite.New(ctx, sqlite.Option{Path: config.Environments.DBPath()}); err != nil {
+	if err := sqlite.New(ctx, sqlite.Option{Path: config.Environments.DBPath(), MigrationsFS: migrations.FS}); err != nil {
 		return err
 	}
 	defer sqlite.Close()

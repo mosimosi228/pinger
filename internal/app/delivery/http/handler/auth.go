@@ -9,14 +9,14 @@ import (
 	"strings"
 
 	"github.com/go-chi/render"
+	pkgauth "github.com/mosimosi228/kit/auth"
+	"github.com/mosimosi228/kit/http_processor"
 	"github.com/mosimosi228/pinger/internal/app/delivery/http/answer"
 	"github.com/mosimosi228/pinger/internal/app/delivery/http/middlewares"
 	"github.com/mosimosi228/pinger/internal/app/delivery/http/request"
 	infracache "github.com/mosimosi228/pinger/internal/infra/cache"
 	mapping "github.com/mosimosi228/pinger/internal/infra/db/maps"
 	"github.com/mosimosi228/pinger/internal/infra/db/repo"
-	pkgauth "github.com/mosimosi228/pinger/pkg/auth"
-	"github.com/mosimosi228/pinger/pkg/http_processor"
 )
 
 const roleUser = "user"

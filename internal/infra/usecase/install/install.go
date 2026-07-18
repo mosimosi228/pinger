@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mosimosi228/kit/utils"
 	"github.com/mosimosi228/pinger/config"
-	"github.com/mosimosi228/pinger/pkg/utils"
 )
 
 const (

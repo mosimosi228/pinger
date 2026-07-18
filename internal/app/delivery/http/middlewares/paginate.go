@@ -3,9 +3,9 @@ package middlewares
 import (
 	"context"
 	"github.com/go-chi/render"
+	hp "github.com/mosimosi228/kit/http_processor"
 	"github.com/mosimosi228/pinger/internal/app/delivery/http/answer"
 	"github.com/mosimosi228/pinger/internal/app/delivery/http/query"
-	hp "github.com/mosimosi228/pinger/pkg/http_processor"
 	"net/http"
 )
 

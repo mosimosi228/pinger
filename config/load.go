@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"github.com/mosimosi228/pinger/pkg/utils"
+	"github.com/mosimosi228/kit/utils"
 	"os"
 	"path/filepath"
 )

@@ -9,12 +9,12 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httplog/v3"
 	"github.com/go-chi/render"
+	l "github.com/mosimosi228/kit/logger"
 	config "github.com/mosimosi228/pinger/config"
 	"github.com/mosimosi228/pinger/internal/app/delivery/http/answer"
 	"github.com/mosimosi228/pinger/internal/app/delivery/http/handler"
 	"github.com/mosimosi228/pinger/internal/app/delivery/http/middlewares"
 	"github.com/mosimosi228/pinger/internal/webui"
-	l "github.com/mosimosi228/pinger/pkg/logger"
 )
 
 func NewRouter() http.Handler {
